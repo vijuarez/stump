@@ -80,9 +80,11 @@ pub fn normalize_release_title(input: &str) -> Option<String> {
 ///
 /// Volume and chapter markers are the most useful thing a release name carries, so they
 /// are expressed in a consistent way, e.g.
-/// - `Love Roma v01 c01-04_MangaScreener` -> `Vol. 1 (Ch. 1-4)`
-/// - `90002-Love_Roma_v02BYAAAH` -> `Vol. 2`
-/// - `Berserk - c042` -> `Ch. 42`
+/// - `Love Roma v01 c01-04_MangaScreener` -> `Vol. 01 (Ch. 001-004)`
+/// - `90002-Love_Roma_v02BYAAAH` -> `Vol. 02`
+/// - `Berserk - c042` -> `Ch. 042`
+///
+/// Numbers are zero padded so books sort correctly as text.
 ///
 /// Names without any such markers fall back to a cleaned version of the file name, and
 /// names which clean up to nothing are returned as-is.
@@ -90,10 +92,12 @@ pub fn media_display_name(file_stem: &str) -> String {
 	let volume = parse_volume(file_stem);
 	let chapters = parse_chapters(file_stem);
 
-	let volume_part = volume.map(|v| format!("Vol. {v}"));
+	// Numbers are zero padded so that books order correctly as plain text, which is how
+	// the database, OPDS feeds, and the client all sort them
+	let volume_part = volume.map(|v| format!("Vol. {v:02}"));
 	let chapter_part = chapters.map(|(first, last)| match last {
-		Some(last) if last != first => format!("Ch. {first}-{last}"),
-		_ => format!("Ch. {first}"),
+		Some(last) if last != first => format!("Ch. {first:03}-{last:03}"),
+		_ => format!("Ch. {first:03}"),
 	});
 
 	let parts = [volume_part, chapter_part]
@@ -554,10 +558,10 @@ mod tests {
 	fn book_names_prefer_volume_markers() {
 		assert_eq!(
 			media_display_name("Love Roma v01 c01-04_MangaScreener"),
-			"Vol. 1 (Ch. 1-4)"
+			"Vol. 01 (Ch. 001-004)"
 		);
-		assert_eq!(media_display_name("90002-Love_Roma_v02BYAAAH"), "Vol. 2");
-		assert_eq!(media_display_name("Berserk - c042"), "Ch. 42");
+		assert_eq!(media_display_name("90002-Love_Roma_v02BYAAAH"), "Vol. 02");
+		assert_eq!(media_display_name("Berserk - c042"), "Ch. 042");
 	}
 
 	#[test]
