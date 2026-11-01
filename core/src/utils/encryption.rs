@@ -47,6 +47,16 @@ mod tests {
 		assert_eq!(decrypted, test_string);
 	}
 
+	/// Providers such as AniList store an empty token, which must still round-trip
+	#[test]
+	fn test_encrypt_decrypt_empty_string() {
+		let encryption_key = create_encryption_key().unwrap();
+
+		let encrypted = encrypt_string("", &encryption_key).unwrap();
+		let decrypted = decrypt_string(&encrypted, &encryption_key).unwrap();
+		assert_eq!(decrypted, "");
+	}
+
 	#[test]
 	fn test_incorrect_encryption_key() {
 		let correct_key = create_encryption_key().unwrap();
