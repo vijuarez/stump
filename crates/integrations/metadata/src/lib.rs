@@ -30,7 +30,7 @@ pub fn create_provider(
 		"COMIC_VINE" => Ok(Box::new(ComicVineClient::new(api_token, None))),
 		"HARDCOVER" => Ok(Box::new(HardcoverClient::new(api_token, None))),
 		// AniList's public API needs no credentials, so any supplied token is ignored
-		"ANILIST" => Ok(Box::new(AnilistClient::new(None))),
+		"ANILIST" => Ok(Box::new(AnilistClient::new())),
 		_ => Err(MetadataProviderError::UnsupportedProvider(
 			provider_type.to_string(),
 		)),

@@ -7,6 +7,7 @@
 //! use an API token.
 
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 use async_trait::async_trait;
 use reqwest::StatusCode;
@@ -74,23 +75,28 @@ fn fetch_query() -> String {
 	)
 }
 
+/// AniList's quota is per account (i.e. per IP), not per client instance. Callers such
+/// as the series metadata mutation build a fresh client for every request, so a
+/// per-instance limiter would hand each request a full budget and the aggregate burst
+/// would still be throttled. The limiter is therefore process-wide.
+static RATE_LIMITER: OnceLock<RateLimiter> = OnceLock::new();
+
+fn rate_limiter() -> &'static RateLimiter {
+	RATE_LIMITER.get_or_init(|| RateLimiter::per_minute(ANILIST_RATE_LIMIT_PER_MINUTE))
+}
+
 pub struct AnilistClient {
 	client: ClientWithMiddleware,
-	rate_limiter: RateLimiter,
 }
 
 impl AnilistClient {
 	const API_URL: &'static str = "https://graphql.anilist.co";
 
-	/// `rate_limit_per_minute` should stay within AniList's published limits
-	pub fn new(rate_limit_per_minute: Option<u32>) -> Self {
+	pub fn new() -> Self {
 		Self {
 			client: build_client_with_retry(
 				reqwest::Client::new(),
 				RetryClientConfig::default(),
-			),
-			rate_limiter: RateLimiter::per_minute(
-				rate_limit_per_minute.unwrap_or(ANILIST_RATE_LIMIT_PER_MINUTE),
 			),
 		}
 	}
@@ -100,7 +106,7 @@ impl AnilistClient {
 		query: &str,
 		variables: Value,
 	) -> Result<T, MetadataProviderError> {
-		self.rate_limiter.until_ready().await;
+		rate_limiter().until_ready().await;
 
 		let response = self
 			.client
@@ -1059,7 +1065,7 @@ mod tests {
 		use super::*;
 
 		fn client() -> AnilistClient {
-			AnilistClient::new(None)
+			AnilistClient::new()
 		}
 
 		#[ignore = "Requires network access to graphql.anilist.co"]
