@@ -46,6 +46,8 @@ struct BuiltOneshot {
 #[derive(Default)]
 pub(crate) struct OneshotOperationOutput {
 	pub created_series: u64,
+	/// The IDs of the series created, so the scan can queue metadata fetches for them
+	pub created_series_ids: Vec<String>,
 	pub created_media: u64,
 	pub logs: Vec<JobExecuteLog>,
 }
@@ -248,6 +250,7 @@ async fn insert_oneshots(
 			count += 1;
 			worker_ctx.report_progress(JobProgress::subtask_position(count, total));
 
+			output.created_series_ids.push(created_series.id.clone());
 			event_pairs.push((media_id.clone(), created_series.id.clone()));
 			media_models.push(media);
 
@@ -318,6 +321,7 @@ pub(crate) async fn build_and_insert_oneshots(
 	let OneshotOperationOutput {
 		created_media,
 		created_series,
+		created_series_ids,
 		logs: insert_logs,
 	} = insert_oneshots(built_oneshots, for_library, worker_ctx).await?;
 
@@ -328,6 +332,7 @@ pub(crate) async fn build_and_insert_oneshots(
 	Ok(OneshotOperationOutput {
 		created_media,
 		created_series,
+		created_series_ids,
 		logs: ordered_logs,
 	})
 }
@@ -590,6 +595,7 @@ pub(crate) async fn convert_to_oneshot_series(
 				let id =
 					create_oneshot_series_for(&txn, &path, &book.id, library_id).await?;
 				output.created_series += 1;
+				output.created_series_ids.push(id.clone());
 				id
 			},
 		};

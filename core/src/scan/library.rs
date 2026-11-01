@@ -101,6 +101,8 @@ pub struct LibraryScanJob {
 	pending_dir_mtimes: Arc<Mutex<Vec<(String, u64)>>>,
 	/// A map of series paths to their ids, loaded during init and used to avoid db trips
 	series_id_by_path: Arc<Mutex<HashMap<String, String>>>,
+	/// The IDs of the series created during this scan, used to queue metadata fetches for them
+	created_series_ids: Arc<Mutex<Vec<String>>>,
 }
 
 impl LibraryScanJob {
@@ -113,6 +115,7 @@ impl LibraryScanJob {
 			dir_mtimes: Arc::new(HashMap::new()),
 			pending_dir_mtimes: Arc::new(Mutex::new(vec![])),
 			series_id_by_path: Arc::new(Mutex::new(HashMap::new())),
+			created_series_ids: Arc::new(Mutex::new(Vec::new())),
 		}
 	}
 
@@ -417,6 +420,30 @@ impl JobLifecycle for LibraryScanJob {
 			}
 		}
 
+		// Series are matched as a whole, and a fresh series has nothing to match against, so
+		// queue a series-level fetch for the ones this scan created. Without this, new series
+		// (including new oneshots) would only ever get the media-level pass above.
+		let created_series_ids = self
+			.created_series_ids
+			.lock()
+			.map(|mut ids| std::mem::take(&mut *ids))
+			.unwrap_or_default();
+
+		if has_relevant_provider && !created_series_ids.is_empty() {
+			tracing::trace!(
+				count = created_series_ids.len(),
+				"Metadata fetch job should be enqueued for new series"
+			);
+			if let Err(e) = ctx
+				.enqueue(StumpJob::metadata_fetch(MetadataFetchJobParams::series(
+					created_series_ids,
+				)))
+				.await
+			{
+				tracing::error!(?e, "Failed to enqueue series metadata fetch follow-up");
+			}
+		}
+
 		let library_path = self.path.clone();
 
 		let pending_models = self
@@ -632,6 +659,11 @@ impl JobLifecycle for LibraryScanJob {
 									for s in &created_series {
 										map.insert(s.path.clone(), s.id.clone());
 									}
+								}
+								if let Ok(mut ids) = self.created_series_ids.lock() {
+									ids.extend(
+										created_series.iter().map(|s| s.id.clone()),
+									);
 								}
 								ctx.emit_event(CoreEvent::CreatedManySeries(
 									event::CreatedManySeries {
@@ -874,11 +906,15 @@ impl JobLifecycle for LibraryScanJob {
 
 				let OneshotOperationOutput {
 					created_series,
+					created_series_ids,
 					created_media,
 					logs: new_logs,
 				} = build_and_insert_oneshots(&self.id, to_create, library_config, ctx)
 					.await?;
 
+				if let Ok(mut ids) = self.created_series_ids.lock() {
+					ids.extend(created_series_ids);
+				}
 				output.created_series += created_series;
 				output.created_media += created_media;
 				logs.extend(new_logs);
@@ -903,9 +939,13 @@ impl JobLifecycle for LibraryScanJob {
 					{
 						let OneshotOperationOutput {
 							created_series: converted,
+							created_series_ids,
 							logs: convert_logs,
 							..
 						} = convert_to_oneshot_series(&old_id, media, &self.id, ctx).await?;
+						if let Ok(mut ids) = self.created_series_ids.lock() {
+							ids.extend(created_series_ids);
+						}
 						output.created_series += converted;
 						logs.extend(convert_logs);
 						if converted > 0 {
