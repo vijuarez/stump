@@ -174,7 +174,7 @@ impl MetadataProvider for AnilistClient {
 		let mut data: SearchData = self
 			.execute(
 				&search_query(),
-				json!({ "search": search, "perPage": per_page }),
+				json!({ "search": search, "perPage": per_page, "isAdult": false }),
 			)
 			.await?;
 
@@ -182,29 +182,58 @@ impl MetadataProvider for AnilistClient {
 		// polluted with volume ranges, scanlation groups, and edition tags (e.g.
 		// "Foo v01-07 [Group] (Yen Press)"), and romanised titles often use
 		// diacritics AniList does not, so fall back to cleaned and accent-folded
-		// variants before treating the search as a miss.
-		for variant in search_variants(search) {
-			if variant == search {
-				continue;
-			}
+		// variants before treating the search as a miss. Adult entries are excluded
+		// unless nothing else matches, in which case they are returned with an
+		// "Adult" age rating so callers can still restrict them.
+		let mut matched: Option<String> = None;
 
-			tracing::trace!(search, variant, "Retrying AniList search with variant");
-			data = self
-				.execute(
-					&search_query(),
-					json!({ "search": variant, "perPage": per_page }),
-				)
-				.await?;
-			if !data.page.media.is_empty() {
-				break;
+		if data.page.media.is_empty() {
+			let mut attempts = search_variants(search)
+				.into_iter()
+				.map(|variant| (variant, false))
+				.collect::<Vec<_>>();
+			attempts.extend(
+				search_variants(search)
+					.into_iter()
+					.map(|variant| (variant, true)),
+			);
+
+			for (variant, is_adult) in attempts {
+				// The faithful, non-adult search has already been made above
+				if variant == search && !is_adult {
+					continue;
+				}
+
+				tracing::trace!(search, variant, is_adult, "Retrying AniList search");
+				data = self
+					.execute(
+						&search_query(),
+						json!({ "search": variant, "perPage": per_page, "isAdult": is_adult }),
+					)
+					.await?;
+				if !data.page.media.is_empty() {
+					matched = Some(variant);
+					break;
+				}
 			}
 		}
 
 		let requested = data.page.media.len();
 		let candidates = data.page.media.iter().map(to_candidate).collect();
 
+		// Score against the variant that actually matched. A query like
+		// "Foo v01-07 [Group]" would otherwise be compared as-is against "Foo" and
+		// score far below what the match deserves.
+		let scoring_query = match matched {
+			Some(variant) if variant != search => SearchQuery {
+				title: variant,
+				..query.clone()
+			},
+			_ => query.clone(),
+		};
+
 		Ok(SearchOutcome {
-			candidates: self.score_search(query, candidates),
+			candidates: self.score_search(&scoring_query, candidates),
 			requested,
 		})
 	}

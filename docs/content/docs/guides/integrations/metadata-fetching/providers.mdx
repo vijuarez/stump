@@ -29,7 +29,9 @@ While Stump does not support every external metadata provider, it currently inte
 - **Series-level matching only.** AniList has no per-volume or per-chapter records, so Stump matches your series and not individual files. Volume-level details still come from other providers.
 - **Libraries:** Manga, Manhwa, Webtoon, Light Novel, and Web Novel. Mixed libraries also use AniList.
 
-Stump fills in the series title and alternative titles, summary, status, start and end years, genres, tags, authors, artists, cover, and volume count. Spoiler and adult-flagged tags are excluded, and adult series are labelled as such.
+Stump fills in the series title and alternative titles, summary, status, start and end years, genres, tags, authors, artists, cover, and volume count. Spoiler and adult-flagged tags are excluded. Adult-flagged entries are only considered when nothing else matches, and are stored with an "Adult" age rating.
+
+Searching falls back to a cleaned-up title when the raw name finds nothing, which handles release names like `Foo v01-07 [Group] (Yen Press)` and accented romanisations.
 
 ## ComicVine
 

@@ -197,6 +197,40 @@ impl MatchScorer {
 			}
 		}
 
+		// Providers search across a work's primary title *and* its alternative titles
+		// (synonyms, localised titles), so a query can legitimately match an entry
+		// whose primary title looks nothing like it. Score every variant and keep the
+		// strongest signal rather than only considering the primary title.
+		let mut best_score = 0.0f32;
+		let mut best_factor = "title_fuzzy";
+
+		let candidates = std::iter::once(candidate_title)
+			.chain(alt_titles.iter().map(String::as_str))
+			.filter(|title| !title.trim().is_empty());
+
+		for title in candidates {
+			let (score, factor) = Self::score_title_variant(query_title, title);
+			if score > best_score {
+				best_score = score;
+				best_factor = factor;
+			}
+		}
+
+		(
+			best_score,
+			vec![ConfidenceFactor {
+				factor: best_factor.into(),
+				weight: best_score,
+				matched: best_score > 0.0,
+			}],
+		)
+	}
+
+	/// Fuzzy similarity between two titles, combining string and token-overlap signals
+	fn score_title_variant(
+		query_title: &str,
+		candidate_title: &str,
+	) -> (f32, &'static str) {
 		// String-level similarity (Dice-Sørensen / Jaro-Winkler)
 		let q_lower = query_title.to_lowercase();
 		let c_lower = candidate_title.to_lowercase();
@@ -225,14 +259,7 @@ impl MatchScorer {
 			"title_fuzzy"
 		};
 
-		(
-			fuzzy_score,
-			vec![ConfidenceFactor {
-				factor: factor_name.into(),
-				weight: fuzzy_score,
-				matched: fuzzy_score > 0.0,
-			}],
-		)
+		(fuzzy_score, factor_name)
 	}
 
 	fn names_match(a: &str, b: &str) -> bool {
@@ -407,6 +434,96 @@ mod tests {
 		assert!(
 			c.confidence > 0.0 && c.confidence < MatchScorer::ALT_TITLE_FLOOR,
 			"Expected fuzzy range, got {}",
+			c.confidence
+		);
+	}
+
+	#[test]
+	fn alternative_title_exact_match_scores_alt_floor() {
+		let scorer = MatchScorer;
+		let query = SearchQuery {
+			title: "Berserk".into(),
+			..Default::default()
+		};
+
+		let mut c = MatchCandidate {
+			provider: "test".into(),
+			external_id: "1".into(),
+			metadata: ExternalMetadata::Series(ExternalSeriesMetadata {
+				title: "Kenpuu Denki Berserk".into(),
+				alternative_titles: vec!["Berserk".into()],
+				..Default::default()
+			}),
+			confidence: 0.0,
+			confidence_factors: Vec::new(),
+		};
+		scorer.score_candidate(&query, &mut c);
+
+		assert!(
+			(c.confidence - MatchScorer::ALT_TITLE_FLOOR).abs() < 0.01,
+			"Expected ~{}, got {}",
+			MatchScorer::ALT_TITLE_FLOOR,
+			c.confidence
+		);
+	}
+
+	/// AniList matched "You Still Rely on Magic" through the synonym
+	/// "You Still Rely on MAGIC?", which is not an exact match due to punctuation
+	#[test]
+	fn near_miss_synonym_still_scores() {
+		let scorer = MatchScorer;
+		let query = SearchQuery {
+			title: "You Still Rely on Magic".into(),
+			..Default::default()
+		};
+
+		let mut c = MatchCandidate {
+			provider: "test".into(),
+			external_id: "1".into(),
+			metadata: ExternalMetadata::Series(ExternalSeriesMetadata {
+				title: "Mada Mahou Nanka ni Tayotte Rassharu no Deshou ka?".into(),
+				alternative_titles: vec!["You Still Rely on MAGIC?".into()],
+				..Default::default()
+			}),
+			confidence: 0.0,
+			confidence_factors: Vec::new(),
+		};
+		scorer.score_candidate(&query, &mut c);
+
+		assert!(
+			c.confidence > 0.5 && c.confidence <= MatchScorer::FUZZY_CEILING,
+			"Synonym near-match should score in the fuzzy range, got {}",
+			c.confidence
+		);
+	}
+
+	#[test]
+	fn best_variant_wins_when_primary_title_is_unrelated() {
+		let scorer = MatchScorer;
+		let query = SearchQuery {
+			title: "Ooku - The Inner Chambers".into(),
+			..Default::default()
+		};
+
+		let mut c = MatchCandidate {
+			provider: "test".into(),
+			external_id: "1".into(),
+			metadata: ExternalMetadata::Series(ExternalSeriesMetadata {
+				title: "\u{14c}oku".into(),
+				alternative_titles: vec![
+					"Unrelated".into(),
+					"Ooku - The Inner Chambers".into(),
+				],
+				..Default::default()
+			}),
+			confidence: 0.0,
+			confidence_factors: Vec::new(),
+		};
+		scorer.score_candidate(&query, &mut c);
+
+		assert!(
+			(c.confidence - MatchScorer::ALT_TITLE_FLOOR).abs() < 0.01,
+			"Alternative title should carry the match, got {}",
 			c.confidence
 		);
 	}
