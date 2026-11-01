@@ -55,9 +55,9 @@ const MEDIA_FIELDS: &str = r#"
 
 fn search_query() -> String {
 	format!(
-		r#"query SearchManga($search: String, $perPage: Int) {{
+		r#"query SearchManga($search: String, $perPage: Int, $isAdult: Boolean) {{
 			Page(page: 1, perPage: $perPage) {{
-				media(search: $search, type: MANGA, isAdult: false, sort: SEARCH_MATCH) {{
+				media(search: $search, type: MANGA, isAdult: $isAdult, sort: SEARCH_MATCH) {{
 					{MEDIA_FIELDS}
 				}}
 			}}
@@ -473,7 +473,8 @@ fn fold_diacritics(input: &str) -> String {
 fn normalize_search_title(title: &str) -> Option<String> {
 	let without_groups = remove_bracketed_groups(title);
 	let without_volumes = remove_volume_markers(&without_groups);
-	let cleaned = without_volumes
+	let without_noise = remove_release_noise_words(&without_volumes);
+	let cleaned = without_noise
 		.split_whitespace()
 		.collect::<Vec<_>>()
 		.join(" ");
@@ -500,6 +501,37 @@ fn remove_bracketed_groups(input: &str) -> String {
 	}
 
 	out
+}
+
+/// Removes standalone release tags such as `Archived`, `Scanlated`, or `Digital`
+fn remove_release_noise_words(input: &str) -> String {
+	const NOISE: &[&str] = &[
+		"archived",
+		"scanlated",
+		"scanlation",
+		"digital",
+		"complete",
+		"completed",
+		"eng",
+		"raw",
+		"raws",
+		"hq",
+		"lq",
+		"zip",
+		"cbz",
+		"cbr",
+	];
+
+	input
+		.split_whitespace()
+		.filter(|token| {
+			let bare = token
+				.trim_matches(|c: char| !c.is_alphanumeric())
+				.to_lowercase();
+			!NOISE.contains(&bare.as_str())
+		})
+		.collect::<Vec<_>>()
+		.join(" ")
 }
 
 /// Removes volume markers such as `v01-07`, `v1`, `vol. 3`, and `volume 3-5`
@@ -996,7 +1028,7 @@ mod tests {
 				"\u{d4}oku - The Inner Chambers",
 			),
 			("Joker e [eng] [AB]", "Joker e"),
-			("Sample Series Archived", "Sample Series Archived"),
+			("Sample Series Archived", "Sample Series"),
 			("Vol. 3 Foo v1", "Foo"),
 		];
 
@@ -1033,6 +1065,18 @@ mod tests {
 			]
 		);
 		assert_eq!(search_variants("Berserk"), vec!["Berserk"]);
+	}
+
+	#[test]
+	fn release_noise_words_are_stripped() {
+		assert_eq!(
+			normalize_search_title("Sample Series Archived").as_deref(),
+			Some("Sample Series")
+		);
+		assert_eq!(
+			normalize_search_title("Best Manga Digital Scanlated").as_deref(),
+			Some("Best Manga")
+		);
 	}
 
 	#[test]
