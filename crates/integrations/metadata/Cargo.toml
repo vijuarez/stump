@@ -20,6 +20,7 @@ strsim = "0.11"
 strum = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+unicode-normalization = "0.1"
 
 [dev-dependencies]
 dotenvy = "0.15"

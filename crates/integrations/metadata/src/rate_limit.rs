@@ -17,10 +17,28 @@ impl RateLimiter {
 	/// # Panics
 	/// Panics if `requests_per_second` is 0
 	pub fn new(requests_per_second: u32) -> Self {
-		let quota = Quota::per_second(
+		Self::from_quota(Quota::per_second(
 			NonZeroU32::new(requests_per_second)
 				.expect("requests_per_second must be > 0"),
-		);
+		))
+	}
+
+	/// Creates a new rate limiter with the specified requests per minute
+	///
+	/// Some providers publish their limits per minute (e.g. AniList allows 90/min and
+	/// drops to 30/min while its API is degraded), which a per-second quota cannot
+	/// express without over-fetching.
+	///
+	/// # Panics
+	/// Panics if `requests_per_minute` is 0
+	pub fn per_minute(requests_per_minute: u32) -> Self {
+		Self::from_quota(Quota::per_minute(
+			NonZeroU32::new(requests_per_minute)
+				.expect("requests_per_minute must be > 0"),
+		))
+	}
+
+	fn from_quota(quota: Quota) -> Self {
 		Self {
 			inner: Arc::new(GovernorLimiter::direct(quota)),
 		}
@@ -47,6 +65,18 @@ mod tests {
 	fn test_rate_limiter_creation() {
 		let limiter = RateLimiter::new(10);
 		assert!(limiter.try_acquire());
+	}
+
+	#[test]
+	fn test_rate_limiter_per_minute() {
+		let limiter = RateLimiter::per_minute(30);
+		assert!(limiter.try_acquire());
+	}
+
+	#[test]
+	#[should_panic(expected = "requests_per_minute must be > 0")]
+	fn test_rate_limiter_zero_per_minute() {
+		let _ = RateLimiter::per_minute(0);
 	}
 
 	#[test]
