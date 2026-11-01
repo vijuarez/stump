@@ -453,10 +453,23 @@ fn map_tags(tags: Option<&[MediaTag]>) -> Option<Vec<String>> {
 }
 
 /// Splits staff into (writers, artists) using whole words from the free-text role.
-/// Translators, supervisors, and editors match neither and are excluded.
+/// Translators, supervisors, and editors match neither and are excluded. Roles for
+/// localisation credits (e.g. "Touch-up Art & Lettering (English)") are skipped
+/// entirely, since their wording would otherwise read as an art credit for a release
+/// which is not the original work.
 fn classify_staff(staff: Option<&StaffConnection>) -> (Vec<String>, Vec<String>) {
 	const WRITER_ROLES: &[&str] = &["story", "author", "writer", "creator"];
 	const ARTIST_ROLES: &[&str] = &["art", "artist", "illustrator", "illustration"];
+	const LOCALISATION_MARKERS: &[&str] = &[
+		"translat",
+		"letter",
+		"touch-up",
+		"edit",
+		"adapt",
+		"localis",
+		"localiz",
+		"proofread",
+	];
 
 	let mut writers = Vec::new();
 	let mut artists = Vec::new();
@@ -466,6 +479,10 @@ fn classify_staff(staff: Option<&StaffConnection>) -> (Vec<String>, Vec<String>)
 		let Some(role) = edge.role.as_deref() else {
 			continue;
 		};
+		if is_localisation_role(role, LOCALISATION_MARKERS) {
+			continue;
+		}
+
 		let Some(name) = edge
 			.node
 			.as_ref()
@@ -499,6 +516,11 @@ fn push_unique(names: &mut Vec<String>, name: &str) {
 	if !names.iter().any(|existing| existing == name) {
 		names.push(name.to_string());
 	}
+}
+
+fn is_localisation_role(role: &str, markers: &[&str]) -> bool {
+	let role = role.to_lowercase();
+	markers.iter().any(|marker| role.contains(marker))
 }
 
 /// Converts AniList's description (HTML with spoilers) to plain text
@@ -725,6 +747,27 @@ mod tests {
 		let (writers, artists) = classify_staff(Some(&staff));
 		assert_eq!(writers, vec!["Writer One", "Creator"]);
 		assert_eq!(artists, vec!["Assistant"]);
+	}
+
+	#[test]
+	fn localisation_credits_are_not_authors_or_artists() {
+		// Real roles from AniList's Berserk entry
+		let staff = StaffConnection {
+			edges: Some(vec![
+				staff_edge("Story & Art (vols 1-41)", "Kentarou Miura"),
+				staff_edge(
+					"Touch-up Art & Lettering (English: vols 1-8)",
+					"Dan Nakrosis",
+				),
+				staff_edge("Lettering (Portuguese)", "Di\u{f3}genes Dih"),
+				staff_edge("Editing (Portuguese)", "Diego Rodeguero"),
+				staff_edge("Translator (Spanish)", "Marc Bernab\u{e9}"),
+			]),
+		};
+
+		let (writers, artists) = classify_staff(Some(&staff));
+		assert_eq!(writers, vec!["Kentarou Miura"]);
+		assert_eq!(artists, vec!["Kentarou Miura"]);
 	}
 
 	#[test]
