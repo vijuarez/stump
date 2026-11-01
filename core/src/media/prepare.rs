@@ -100,7 +100,7 @@ pub async fn prepare_draft(
 
 	let active_model = media::ActiveModel {
 		id: Set(id),
-		name: Set(file_stem),
+		name: Set(titles::media_display_name(&file_stem)),
 		size: Set(size),
 		extension: Set(extension),
 		pages: Set(pages),

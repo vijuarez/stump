@@ -57,9 +57,15 @@ async fn build_oneshot<P: AsRef<Path>>(
 	core_config: &StumpConfig,
 ) -> CoreResult<BuiltOneshot> {
 	let path = path.as_ref();
-	let FileParts {
-		file_stem: name, ..
-	} = path.file_parts();
+	let FileParts { file_stem, .. } = path.file_parts();
+	let name = {
+		let cleaned = titles::clean_file_stem(&file_stem);
+		if cleaned.is_empty() {
+			file_stem
+		} else {
+			cleaned
+		}
+	};
 
 	let id = Uuid::new_v4();
 	// ^ we set id early to share with book
@@ -636,9 +642,15 @@ async fn create_oneshot_series_for<C: ConnectionTrait>(
 	library_id: &str,
 ) -> Result<String, DbErr> {
 	let id = Uuid::new_v4().to_string();
-	let FileParts {
-		file_stem: name, ..
-	} = PathBuf::from(path).file_parts();
+	let FileParts { file_stem, .. } = PathBuf::from(path).file_parts();
+	let name = {
+		let cleaned = titles::clean_file_stem(&file_stem);
+		if cleaned.is_empty() {
+			file_stem
+		} else {
+			cleaned
+		}
+	};
 
 	series::ActiveModel {
 		id: Set(id.clone()),

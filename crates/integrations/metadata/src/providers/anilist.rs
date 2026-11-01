@@ -14,7 +14,7 @@ use reqwest::StatusCode;
 use reqwest_middleware::ClientWithMiddleware;
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::{json, Value};
-use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
+use titles as t;
 
 use crate::{
 	client::{build_client_with_retry, RetryClientConfig},
@@ -457,8 +457,8 @@ fn map_series(media: &Media) -> ExternalSeriesMetadata {
 fn search_variants(title: &str) -> Vec<String> {
 	let mut variants = vec![title.trim().to_string()];
 
-	if let Some(cleaned) = normalize_search_title(title) {
-		let folded = fold_diacritics(&cleaned);
+	if let Some(cleaned) = t::normalize_release_title(title) {
+		let folded = t::fold_diacritics(&cleaned);
 		variants.push(cleaned);
 		if folded != *variants.last().unwrap() {
 			variants.push(folded);
@@ -467,145 +467,6 @@ fn search_variants(title: &str) -> Vec<String> {
 
 	variants.dedup();
 	variants
-}
-
-/// Folds accented characters to their ASCII equivalents
-fn fold_diacritics(input: &str) -> String {
-	let decomposed: String = input.nfd().filter(|c| !is_combining_mark(*c)).collect();
-
-	// A few letters do not decompose into a base letter plus a combining mark
-	decomposed
-		.chars()
-		.map(|c| match c {
-			'\u{00df}' => "ss".to_string(),
-			'\u{00e6}' => "ae".to_string(),
-			'\u{00c6}' => "AE".to_string(),
-			'\u{00f8}' => "o".to_string(),
-			'\u{00d8}' => "O".to_string(),
-			'\u{0153}' => "oe".to_string(),
-			'\u{0152}' => "OE".to_string(),
-			'\u{0142}' => "l".to_string(),
-			'\u{0141}' => "L".to_string(),
-			other => other.to_string(),
-		})
-		.collect()
-}
-
-/// Strips scanlation and release noise from a series name so it can be searched.
-///
-/// Handles titles like:
-/// - `Shoulder-a-Coffin Kuro v01-07 [Uasaha+Rurika] (Yen Press)` -> `Shoulder-a-Coffin Kuro`
-/// - `Fare L\u{2019}amore [Media Do]` -> `Fare L\u{2019}amore`
-/// - `Drown Yo (2017-2020) (Digital) (danke-Empire)` -> `Drown Yo`
-///
-/// Returns `None` when nothing meaningful was removed.
-fn normalize_search_title(title: &str) -> Option<String> {
-	let without_groups = remove_bracketed_groups(title);
-	let without_volumes = remove_volume_markers(&without_groups);
-	let without_noise = remove_release_noise_words(&without_volumes);
-	let cleaned = without_noise
-		.split_whitespace()
-		.collect::<Vec<_>>()
-		.join(" ");
-
-	if cleaned.is_empty() || cleaned == title.trim() {
-		None
-	} else {
-		Some(cleaned)
-	}
-}
-
-/// Removes `[...]` and `(...)` groups, including nested ones
-fn remove_bracketed_groups(input: &str) -> String {
-	let mut out = String::with_capacity(input.len());
-	let mut depth = 0usize;
-
-	for c in input.chars() {
-		match c {
-			'[' | '(' => depth += 1,
-			']' | ')' => depth = depth.saturating_sub(1),
-			_ if depth == 0 => out.push(c),
-			_ => {},
-		}
-	}
-
-	out
-}
-
-/// Removes standalone release tags such as `Archived`, `Scanlated`, or `Digital`
-fn remove_release_noise_words(input: &str) -> String {
-	const NOISE: &[&str] = &[
-		"archived",
-		"scanlated",
-		"scanlation",
-		"digital",
-		"complete",
-		"completed",
-		"eng",
-		"raw",
-		"raws",
-		"hq",
-		"lq",
-		"zip",
-		"cbz",
-		"cbr",
-	];
-
-	input
-		.split_whitespace()
-		.filter(|token| {
-			let bare = token
-				.trim_matches(|c: char| !c.is_alphanumeric())
-				.to_lowercase();
-			!NOISE.contains(&bare.as_str())
-		})
-		.collect::<Vec<_>>()
-		.join(" ")
-}
-
-/// Removes volume markers such as `v01-07`, `v1`, `vol. 3`, and `volume 3-5`
-fn remove_volume_markers(input: &str) -> String {
-	let mut out: Vec<String> = Vec::new();
-	let mut skip_number = false;
-
-	for token in input.split_whitespace() {
-		let bare = token
-			.trim_matches(|c: char| !c.is_alphanumeric())
-			.to_lowercase();
-
-		if skip_number && bare.chars().all(|c| c.is_ascii_digit() || c == '-') {
-			skip_number = false;
-			continue;
-		}
-		skip_number = false;
-
-		if bare == "vol" || bare == "vols" || bare == "volume" || bare == "volumes" {
-			skip_number = true;
-			continue;
-		}
-		if is_volume_token(&bare) {
-			continue;
-		}
-
-		out.push(token.to_string());
-	}
-
-	out.join(" ")
-}
-
-/// True for tokens like `v01`, `v1`, `v01-07`, or `v01-04`
-fn is_volume_token(bare: &str) -> bool {
-	let Some(rest) = bare.strip_prefix('v') else {
-		return false;
-	};
-	let (start, end) = match rest.split_once('-') {
-		Some((start, end)) => (start, Some(end)),
-		None => (rest, None),
-	};
-
-	let numeric =
-		|value: &str| !value.is_empty() && value.chars().all(|c| c.is_ascii_digit());
-	numeric(start) && end.is_none_or(numeric)
 }
 
 fn non_blank(value: Option<&str>) -> Option<&str> {
@@ -1063,7 +924,7 @@ mod tests {
 
 		for (input, expected) in cases {
 			assert_eq!(
-				normalize_search_title(input).as_deref(),
+				t::normalize_release_title(input).as_deref(),
 				Some(expected).filter(|e| *e != input),
 				"input: {input}"
 			);
@@ -1073,11 +934,11 @@ mod tests {
 	#[test]
 	fn diacritics_fold_for_search() {
 		assert_eq!(
-			fold_diacritics("\u{d4}oku - The Inner Chambers"),
+			t::fold_diacritics("\u{d4}oku - The Inner Chambers"),
 			"Ooku - The Inner Chambers"
 		);
-		assert_eq!(fold_diacritics("Berserk"), "Berserk");
-		assert_eq!(fold_diacritics("Pok\u{e9}mon"), "Pokemon");
+		assert_eq!(t::fold_diacritics("Berserk"), "Berserk");
+		assert_eq!(t::fold_diacritics("Pok\u{e9}mon"), "Pokemon");
 	}
 
 	#[test]
@@ -1099,20 +960,20 @@ mod tests {
 	#[test]
 	fn release_noise_words_are_stripped() {
 		assert_eq!(
-			normalize_search_title("Sample Series Archived").as_deref(),
+			t::normalize_release_title("Sample Series Archived").as_deref(),
 			Some("Sample Series")
 		);
 		assert_eq!(
-			normalize_search_title("Best Manga Digital Scanlated").as_deref(),
+			t::normalize_release_title("Best Manga Digital Scanlated").as_deref(),
 			Some("Best Manga")
 		);
 	}
 
 	#[test]
 	fn search_title_normalisation_returns_none_when_unchanged() {
-		assert_eq!(normalize_search_title("Berserk"), None);
-		assert_eq!(normalize_search_title("  Berserk  "), None);
-		assert_eq!(normalize_search_title("[Group]"), None);
+		assert_eq!(t::normalize_release_title("Berserk"), None);
+		assert_eq!(t::normalize_release_title("  Berserk  "), None);
+		assert_eq!(t::normalize_release_title("[Group]"), None);
 	}
 
 	#[test]

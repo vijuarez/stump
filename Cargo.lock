@@ -5558,6 +5558,7 @@ dependencies = [
  "strsim",
  "strum 0.27.2",
  "thiserror 2.0.20",
+ "titles",
  "tokio",
  "tracing",
  "unicode-normalization",
@@ -9598,6 +9599,7 @@ dependencies = [
  "tests",
  "thiserror 2.0.20",
  "thumbhash",
+ "titles",
  "tokio",
  "tokio-util",
  "toml 0.9.7",
@@ -10423,6 +10425,13 @@ name = "tinyvec_macros"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
+
+[[package]]
+name = "titles"
+version = "0.0.0"
+dependencies = [
+ "unicode-normalization",
+]
 
 [[package]]
 name = "tokio"
