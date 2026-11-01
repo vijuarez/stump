@@ -298,35 +298,62 @@ async fn execute_book_visit(
 /// sub-collections which each start at chapter 1. Those fall back to the cleaned file name so
 /// they stay distinguishable.
 fn disambiguate_media_names(books: &mut VecDeque<MediaDraft>) {
+	let counts = name_counts(books.iter());
+
+	for draft in books.iter_mut() {
+		apply_disambiguated_name(draft, &counts);
+	}
+}
+
+/// [`disambiguate_media_names`] for books which are being updated rather than created
+fn disambiguate_visit_results(results: &mut VecDeque<BookVisitResult>) {
+	let counts = name_counts(results.iter().filter_map(|result| match result {
+		BookVisitResult::Built(draft) => Some(draft.as_ref()),
+		_ => None,
+	}));
+
+	for result in results.iter_mut() {
+		if let BookVisitResult::Built(draft) = result {
+			apply_disambiguated_name(draft.as_mut(), &counts);
+		}
+	}
+}
+
+fn name_counts<'a>(
+	drafts: impl Iterator<Item = &'a MediaDraft>,
+) -> HashMap<String, usize> {
 	let mut counts: HashMap<String, usize> = HashMap::new();
-	for draft in books.iter() {
+
+	for draft in drafts {
 		if let ActiveValue::Set(name) = &draft.media.name {
 			*counts.entry(name.clone()).or_default() += 1;
 		}
 	}
 
-	for draft in books.iter_mut() {
-		let ActiveValue::Set(name) = draft.media.name.clone() else {
-			continue;
-		};
+	counts
+}
 
-		if counts.get(&name).copied().unwrap_or_default() < 2 {
-			continue;
-		}
+fn apply_disambiguated_name(draft: &mut MediaDraft, counts: &HashMap<String, usize>) {
+	let ActiveValue::Set(name) = draft.media.name.clone() else {
+		return;
+	};
 
-		let ActiveValue::Set(path) = &draft.media.path else {
-			continue;
-		};
+	if counts.get(&name).copied().unwrap_or_default() < 2 {
+		return;
+	}
 
-		let stem = Path::new(path)
-			.file_stem()
-			.map(|stem| stem.to_string_lossy().to_string())
-			.unwrap_or_default();
-		let fallback = titles::clean_file_stem(&stem);
+	let ActiveValue::Set(path) = &draft.media.path else {
+		return;
+	};
 
-		if !fallback.is_empty() && fallback != name {
-			draft.media.name = ActiveValue::Set(fallback);
-		}
+	let stem = Path::new(path)
+		.file_stem()
+		.map(|stem| stem.to_string_lossy().to_string())
+		.unwrap_or_default();
+	let fallback = titles::clean_file_stem(&stem);
+
+	if !fallback.is_empty() && fallback != name {
+		draft.media.name = ActiveValue::Set(fallback);
 	}
 }
 
@@ -829,6 +856,8 @@ pub(crate) async fn visit_and_update_media(
 	let success_count = build_results.len();
 	let error_count = output.logs.len();
 	tracing::debug!(elapsed = ?start.elapsed(), success_count, error_count, "Handled books from disk");
+
+	disambiguate_visit_results(&mut build_results);
 
 	worker_ctx.report_progress(JobProgress::msg("Updating media in database"));
 	let task_count = build_results.len() as i32;
