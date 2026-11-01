@@ -406,10 +406,7 @@ fn has_clean_suffix(after: &str) -> bool {
 
 	let mut chars = after.chars();
 	chars.next();
-	let is_version =
-		matches!(next, 'v' | 'V') && chars.next().is_some_and(|c| c.is_ascii_digit());
-
-	is_version
+	matches!(next, 'v' | 'V') && chars.next().is_some_and(|c| c.is_ascii_digit())
 }
 
 /// Scans for `keyword` at a word boundary followed by a number, optionally parsing a trailing

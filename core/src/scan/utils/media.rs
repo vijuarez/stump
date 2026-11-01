@@ -294,6 +294,42 @@ async fn execute_book_visit(
 	}
 }
 
+/// Two books in one series can end up with the same display name, e.g. a series shipped as two
+/// sub-collections which each start at chapter 1. Those fall back to the cleaned file name so
+/// they stay distinguishable.
+fn disambiguate_media_names(books: &mut VecDeque<MediaDraft>) {
+	let mut counts: HashMap<String, usize> = HashMap::new();
+	for draft in books.iter() {
+		if let ActiveValue::Set(name) = &draft.media.name {
+			*counts.entry(name.clone()).or_default() += 1;
+		}
+	}
+
+	for draft in books.iter_mut() {
+		let ActiveValue::Set(name) = draft.media.name.clone() else {
+			continue;
+		};
+
+		if counts.get(&name).copied().unwrap_or_default() < 2 {
+			continue;
+		}
+
+		let ActiveValue::Set(path) = &draft.media.path else {
+			continue;
+		};
+
+		let stem = Path::new(path)
+			.file_stem()
+			.map(|stem| stem.to_string_lossy().to_string())
+			.unwrap_or_default();
+		let fallback = titles::clean_file_stem(&stem);
+
+		if !fallback.is_empty() && fallback != name {
+			draft.media.name = ActiveValue::Set(fallback);
+		}
+	}
+}
+
 /// Safely builds media from a list of paths concurrently, tracking errors and
 /// reporting progress to the worker context
 async fn build_media(
@@ -378,6 +414,8 @@ async fn build_media(
 	let success_count = books.len();
 	let error_count = logs.len();
 	tracing::debug!(elapsed = ?start.elapsed(), success_count, error_count, "Built books from disk");
+
+	disambiguate_media_names(&mut books);
 
 	(books, logs)
 }
