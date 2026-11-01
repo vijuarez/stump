@@ -32,10 +32,15 @@ impl RateLimiter {
 	/// # Panics
 	/// Panics if `requests_per_minute` is 0
 	pub fn per_minute(requests_per_minute: u32) -> Self {
-		Self::from_quota(Quota::per_minute(
-			NonZeroU32::new(requests_per_minute)
-				.expect("requests_per_minute must be > 0"),
-		))
+		Self::from_quota(
+			Quota::per_minute(
+				NonZeroU32::new(requests_per_minute)
+					.expect("requests_per_minute must be > 0"),
+			)
+			// Without this the quota allows a burst of `requests_per_minute` up
+			// front, which providers still answer with 429s.
+			.allow_burst(NonZeroU32::new(1).expect("burst must be > 0")),
+		)
 	}
 
 	fn from_quota(quota: Quota) -> Self {
@@ -71,6 +76,14 @@ mod tests {
 	fn test_rate_limiter_per_minute() {
 		let limiter = RateLimiter::per_minute(30);
 		assert!(limiter.try_acquire());
+	}
+
+	/// A per-minute quota must not hand out its whole allowance at once
+	#[test]
+	fn test_rate_limiter_per_minute_does_not_burst() {
+		let limiter = RateLimiter::per_minute(30);
+		assert!(limiter.try_acquire());
+		assert!(!limiter.try_acquire());
 	}
 
 	#[test]
