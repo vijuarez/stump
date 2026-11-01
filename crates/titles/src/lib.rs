@@ -66,8 +66,9 @@ pub fn normalize_release_title(input: &str) -> Option<String> {
 	let without_ids = remove_catalogue_id(input);
 	let without_groups = remove_all_bracket_groups(&without_ids);
 	let without_volumes = remove_volume_markers(&without_groups);
-	let without_noise = remove_release_noise_words(&without_volumes);
-	let cleaned = collapse_whitespace(&without_noise);
+	let without_chapters = remove_chapter_markers(&without_volumes);
+	let without_noise = remove_release_noise_words(&without_chapters);
+	let cleaned = trim_separators(&collapse_whitespace(&without_noise));
 
 	if cleaned.is_empty() || cleaned == input.trim() {
 		None
@@ -126,6 +127,84 @@ pub fn media_display_name(file_stem: &str) -> String {
 		})
 		.collect::<Vec<_>>()
 		.join(" ")
+}
+
+/// Builds a display name for a one-shot series, which is derived from the file name.
+///
+/// This is [`clean_file_stem`] with chapter markers dropped, since a chapter range says
+/// nothing about the work itself (`Shoujo Pandora - c001-004` -> `Shoujo Pandora`).
+pub fn series_display_name(file_stem: &str) -> String {
+	let cleaned = clean_file_stem(file_stem);
+	let stripped = trim_separators(&remove_chapter_markers(&cleaned));
+
+	if stripped.is_empty() {
+		cleaned
+	} else {
+		stripped
+	}
+}
+
+/// Removes chapter markers such as `c001`, `c001-004`, `ch. 12`, or `Chapter 5`
+fn remove_chapter_markers(input: &str) -> String {
+	let mut out: Vec<String> = Vec::new();
+	let mut skip_next_number = false;
+
+	for token in input.split_whitespace() {
+		if skip_next_number {
+			let bare = token.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
+			let is_number =
+				!bare.is_empty() && bare.chars().all(|c| c.is_ascii_digit() || c == '-');
+
+			skip_next_number = false;
+			if is_number {
+				continue;
+			}
+		}
+
+		// A standalone keyword says the chapter number is in the next token
+		if is_chapter_keyword(token) {
+			skip_next_number = true;
+			continue;
+		}
+
+		if is_chapter_token(token) {
+			continue;
+		}
+
+		out.push(token.to_string());
+	}
+
+	out.join(" ")
+}
+
+/// True for a bare `chapter`-ish keyword, e.g. `ch.` or `Chapter`
+fn is_chapter_keyword(token: &str) -> bool {
+	let bare = token
+		.trim_matches(|c: char| !c.is_alphanumeric())
+		.to_lowercase();
+
+	matches!(bare.as_str(), "chapter" | "chapters" | "chap" | "ch" | "c")
+}
+
+/// True for tokens which are only a chapter marker
+fn is_chapter_token(token: &str) -> bool {
+	let bare = token
+		.trim_matches(|c: char| !c.is_alphanumeric() && c != '-')
+		.to_lowercase();
+
+	let rest = ["chapter", "chap", "ch", "c"]
+		.iter()
+		.find_map(|prefix| bare.strip_prefix(prefix));
+
+	let Some(rest) = rest else {
+		return false;
+	};
+
+	let rest = rest.trim_start_matches('.');
+
+	!rest.is_empty()
+		&& rest.chars().all(|c| c.is_ascii_digit() || c == '-')
+		&& rest.chars().any(|c| c.is_ascii_digit())
 }
 
 /// Cleans a file stem for display: drops catalogue IDs, bracketed groups, trailing
@@ -576,6 +655,31 @@ mod tests {
 		);
 		assert_eq!(media_display_name("Ayako (2013) (digital)"), "Ayako");
 		assert_eq!(media_display_name("Paranoia Street"), "Paranoia Street");
+	}
+
+	#[test]
+	fn series_names_drop_chapter_markers() {
+		assert_eq!(
+			series_display_name("Shoujo Pandora - c001-004"),
+			"Shoujo Pandora"
+		);
+		assert_eq!(
+			series_display_name("Dare ga Tame ni Hagane wa Naru - c000-006"),
+			"Dare ga Tame ni Hagane wa Naru"
+		);
+		assert_eq!(series_display_name("Berserk ch. 12"), "Berserk");
+		assert_eq!(
+			series_display_name("Pink (Kyoko Okazaki) [1989]"),
+			"Pink (Kyoko Okazaki)"
+		);
+	}
+
+	#[test]
+	fn search_normalisation_drops_chapter_markers() {
+		assert_eq!(
+			normalize_release_title("Shoujo Pandora - c001-004").as_deref(),
+			Some("Shoujo Pandora")
+		);
 	}
 
 	#[test]

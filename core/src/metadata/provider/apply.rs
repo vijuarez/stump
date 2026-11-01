@@ -139,15 +139,26 @@ where
 ///
 /// Note: A provider _should_ sort the candidates already, so this function takes that
 /// assumption and does not sort
+/// Provider identifiers come in two shapes: the [`MetadataProvider`] enum renders as
+/// `SCREAMING_SNAKE_CASE` (`ANILIST`) while provider implementations report a lowercase id
+/// (`anilist`). Compare them on a normalised key so the two line up.
+fn provider_key(provider: &str) -> String {
+	provider
+		.chars()
+		.filter(|c| c.is_ascii_alphanumeric())
+		.map(|c| c.to_ascii_lowercase())
+		.collect()
+}
+
 pub fn find_auto_apply_candidate(
 	candidates: &[MatchCandidate],
 	provider_configs: &[models::entity::metadata_provider_config::Model],
 ) -> Option<(MatchCandidate, AutoApplyConfig)> {
 	for candidate in candidates {
-		if let Some(config) = provider_configs
-			.iter()
-			.find(|c| c.provider_type.to_string() == candidate.provider)
-		{
+		if let Some(config) = provider_configs.iter().find(|c| {
+			provider_key(&c.provider_type.to_string())
+				== provider_key(&candidate.provider)
+		}) {
 			if let Some(auto_config) = config
 				.auto_apply_config
 				.as_ref()
@@ -516,6 +527,44 @@ mod tests {
 			number,
 			..Default::default()
 		}
+	}
+
+	#[test]
+	fn auto_apply_matches_provider_id_to_enum_name() {
+		use models::entity::metadata_provider_config;
+		use models::shared::enums::MetadataProvider;
+
+		let config = metadata_provider_config::Model {
+			id: 1,
+			provider_type: MetadataProvider::Anilist,
+			enabled: true,
+			encrypted_api_token: None,
+			api_token_expires_at: None,
+			auto_apply_config: Some(serde_json::json!({
+				"enabled": true,
+				"threshold": 0.85,
+				"strategy": "FILL_GAPS",
+			})),
+			created_at: chrono::Utc::now().into(),
+			updated_at: None,
+		};
+
+		let candidate = MatchCandidate {
+			provider: "anilist".into(),
+			external_id: "1".into(),
+			metadata: ExternalMetadata::Series(Default::default()),
+			confidence: 0.9,
+			confidence_factors: vec![],
+		};
+
+		let found = find_auto_apply_candidate(&[candidate.clone()], &[config.clone()]);
+		assert!(found.is_some(), "auto-apply should match on provider id");
+
+		let below_threshold = MatchCandidate {
+			confidence: 0.5,
+			..candidate
+		};
+		assert!(find_auto_apply_candidate(&[below_threshold], &[config]).is_none());
 	}
 
 	#[test]

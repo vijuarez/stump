@@ -61,7 +61,7 @@ async fn build_oneshot<P: AsRef<Path>>(
 	let path = path.as_ref();
 	let FileParts { file_stem, .. } = path.file_parts();
 	let name = {
-		let cleaned = titles::clean_file_stem(&file_stem);
+		let cleaned = titles::series_display_name(&file_stem);
 		if cleaned.is_empty() {
 			file_stem
 		} else {
@@ -650,7 +650,7 @@ async fn create_oneshot_series_for<C: ConnectionTrait>(
 	let id = Uuid::new_v4().to_string();
 	let FileParts { file_stem, .. } = PathBuf::from(path).file_parts();
 	let name = {
-		let cleaned = titles::clean_file_stem(&file_stem);
+		let cleaned = titles::series_display_name(&file_stem);
 		if cleaned.is_empty() {
 			file_stem
 		} else {
