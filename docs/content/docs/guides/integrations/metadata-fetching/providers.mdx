@@ -21,9 +21,15 @@ While Stump does not support every external metadata provider, it currently inte
 
 > Not yet implemented
 
-## Anilist
+## AniList
 
-> Not yet implemented
+[AniList](https://anilist.co) is a good source of metadata for manga, manhwa, webtoons, and light and web novels.
+
+- **No API key required.** Stump reads AniList's public API directly, so you can add the provider without entering a token.
+- **Series-level matching only.** AniList has no per-volume or per-chapter records, so Stump matches your series and not individual files. Volume-level details still come from other providers.
+- **Libraries:** Manga, Manhwa, Webtoon, Light Novel, and Web Novel. Mixed libraries also use AniList.
+
+Stump fills in the series title and alternative titles, summary, status, start and end years, genres, tags, authors, artists, cover, and volume count. Spoiler and adult-flagged tags are excluded, and adult series are labelled as such.
 
 ## ComicVine
 

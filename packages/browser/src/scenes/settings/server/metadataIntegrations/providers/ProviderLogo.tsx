@@ -21,4 +21,5 @@ export function ProviderLogo({ provider, className }: Props) {
 const LOGOS: Record<MetadataProvider, string> = {
 	[MetadataProvider.Hardcover]: '/assets/logos/hardcover.png',
 	[MetadataProvider.ComicVine]: '/assets/logos/comicvine.png',
+	[MetadataProvider.Anilist]: '/assets/logos/anilist.png',
 }

@@ -20,7 +20,7 @@ pub use types::{
 	SearchQuery,
 };
 
-use providers::{ComicVineClient, HardcoverClient};
+use providers::{AnilistClient, ComicVineClient, HardcoverClient};
 
 pub fn create_provider(
 	provider_type: &str,
@@ -29,8 +29,21 @@ pub fn create_provider(
 	match provider_type {
 		"COMIC_VINE" => Ok(Box::new(ComicVineClient::new(api_token, None))),
 		"HARDCOVER" => Ok(Box::new(HardcoverClient::new(api_token, None))),
+		// AniList's public API needs no credentials, so any supplied token is ignored
+		"ANILIST" => Ok(Box::new(AnilistClient::new(None))),
 		_ => Err(MetadataProviderError::UnsupportedProvider(
 			provider_type.to_string(),
 		)),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn creates_anilist_provider_without_token() {
+		let provider = create_provider("ANILIST", String::new()).unwrap();
+		assert_eq!(provider.id(), "anilist");
 	}
 }

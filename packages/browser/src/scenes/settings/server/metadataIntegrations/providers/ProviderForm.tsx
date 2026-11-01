@@ -9,16 +9,22 @@ import {
 	RawSwitch,
 	Text,
 } from '@stump/components'
-import { MergeStrategy } from '@stump/graphql'
+import { MergeStrategy, MetadataProvider } from '@stump/graphql'
 import { startOfDay } from 'date-fns'
 import { useFormContext, useFormState, useWatch } from 'react-hook-form'
 
 import { useTranslate } from '@/hooks/useTranslate'
 
+import { providerRequiresApiKey } from './constants'
 import { ProviderApiKeyInput } from './ProviderApiKeyInput'
 import { PatchProviderConfigSchema } from './schema'
 
-export default function ProviderForm() {
+type Props = {
+	/** The provider being configured, used to decide whether an API key is needed */
+	providerType?: MetadataProvider
+}
+
+export default function ProviderForm({ providerType }: Props) {
 	const form = useFormContext<PatchProviderConfigSchema>()
 	const { t } = useTranslate()
 	const { errors } = useFormState({ control: form.control })
@@ -45,7 +51,7 @@ export default function ProviderForm() {
 
 	return (
 		<>
-			<ProviderApiKeyInput />
+			{providerRequiresApiKey(providerType) && <ProviderApiKeyInput />}
 
 			<div className="gap-2 flex flex-col">
 				<Label>{t(getKey('apiTokenExpiresAt.label'))}</Label>

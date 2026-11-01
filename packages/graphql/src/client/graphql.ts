@@ -1979,6 +1979,8 @@ export type MetadataFieldOverride = {
 
 /** The supported external metadata providers */
 export enum MetadataProvider {
+  /** AniList (https://anilist.co) */
+  Anilist = 'ANILIST',
   /** ComicVine (https://comicvine.gamespot.com/api/) */
   ComicVine = 'COMIC_VINE',
   /** Hardcover (https://hardcover.app) */

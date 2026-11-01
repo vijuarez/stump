@@ -115,7 +115,7 @@ export function EditProviderDialog({ provider: fragmentRef }: Props) {
 					</Dialog.Header>
 
 					<Form form={form} onSubmit={handleSubmit} id="edit-provider-form" className="py-2">
-						<ProviderForm />
+						<ProviderForm providerType={provider.providerType} />
 					</Form>
 
 					<Dialog.Footer>

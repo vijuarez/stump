@@ -118,7 +118,7 @@ export function CreateProviderDialog() {
 							</div>
 						)}
 
-						{step === 1 && <ProviderForm />}
+						{step === 1 && <ProviderForm providerType={selectedProvider} />}
 					</Form>
 
 					<Dialog.Footer>

@@ -1858,6 +1858,8 @@ enum MetadataProvider {
 	HARDCOVER
 	"ComicVine (https://comicvine.gamespot.com/api/)"
 	COMIC_VINE
+	"AniList (https://anilist.co)"
+	ANILIST
 }
 
 type MetadataProviderConfigModel {
